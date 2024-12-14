@@ -1,0 +1,123 @@
+from pyspark.sql import SparkSession
+from pyspark.sql.functions import col, sum, countDistinct, avg, desc, expr,to_date, month
+
+
+# Initialize Spark Session
+spark = SparkSession.builder \
+    .appName("Sales and Customer Insights") \
+    .getOrCreate()
+
+# Load Data
+customers_path = "/content/customers.csv"  # Replace with actual path
+sales_path = "/content/salestxns.csv"      # Replace with actual path
+
+# Define schema and load customers data
+customers_df = spark.read.csv(customers_path, header=True, inferSchema=True)
+customers_df.show()
+
+# Define schema and load sales data
+sales_df = spark.read.csv(sales_path, header=True, inferSchema=True)
+sales_df.show()
+
+# Register DataFrames as Temp Views
+customers_df.createOrReplaceTempView("customers")
+sales_df.createOrReplaceTempView("sales")
+
+# Query 1: Total Number of Customers
+total_customers = customers_df.select(countDistinct("Customer_Id").alias("Unique Customers"))
+total_customers.show()
+
+
+
+
+# Query 2: Total Sales by State
+
+total_sales_by_State = spark.sql("""
+    SELECT c.State, SUM(s.Price) AS total_sales 
+    FROM sales s
+    JOIN customers c ON s.Customer_Id = c.Customer_Id
+    GROUP BY c.State
+""")
+total_sales_by_State.show()
+
+
+# Query 3: Top 10 Most Purchased Products
+top_10_products = spark.sql("SELECT product_id, SUM(quantity) AS total_quantity FROM sales GROUP BY product_id ORDER BY total_quantity DESC LIMIT 10")
+top_10_products.show()
+
+# Query 4: Average Transaction Value
+avg_transaction_value = spark.sql("SELECT AVG(Price * Quantity) AS avg_transaction_value FROM sales")
+avg_transaction_value.show()
+
+# Query 5: Top 5 Customers by Expenditure
+top_5_customers = spark.sql("SELECT customer_id, SUM(Price) AS total_spent FROM sales GROUP BY customer_id ORDER BY total_spent DESC LIMIT 5")
+top_5_customers.show()
+
+# Query 6: Product Purchases by a Specific Customer
+customer_id = 256  # Replace with desired customer ID
+customer_purchases = spark.sql(f"""
+    SELECT product_id, SUM(quantity) AS total_quantity, SUM(Price) AS total_spent
+    FROM sales
+    WHERE customer_id = {customer_id}
+    GROUP BY product_id
+""")
+customer_purchases.show()
+
+# Query 7: Monthly Sales Trends
+
+from pyspark.sql.functions import col
+
+# Monthly sales trends query
+monthly_sales_trends = spark.sql("""
+    SELECT 
+        MONTH(TO_DATE(Sales_Date, 'MM-dd-yyyy')) AS MonthName,
+        YEAR(TO_DATE(Sales_Date, 'MM-dd-yyyy')) AS Year,
+        SUM(Price) AS MonthlySales
+    FROM 
+        sales
+    where  YEAR(TO_DATE(Sales_Date, 'MM-dd-yyyy')) is not null  
+           
+    GROUP BY 
+        YEAR(TO_DATE(Sales_Date, 'MM-dd-yyyy')),
+        MONTH(TO_DATE(Sales_Date, 'MM-dd-yyyy'))
+    ORDER BY 
+               YEAR(TO_DATE(Sales_Date, 'MM-dd-yyyy')), 
+        MONTH(TO_DATE(Sales_Date, 'MM-dd-yyyy')) Desc
+        Limit 1
+
+""")
+
+monthly_sales_trends.show()
+
+
+
+
+
+# Query 8: Category with Highest Sales
+category_highest_sales = spark.sql("SELECT Category_Name, SUM(Price) AS total_sales FROM sales GROUP BY Category_Name ORDER BY total_sales DESC LIMIT 1")
+category_highest_sales.show()
+
+# Query 9: State-wise Sales Comparison
+state1, state2 = 'PR', 'OH'  # Replace with desired states
+state_comparison = spark.sql(f"""
+    SELECT c.State, SUM(s.Price) AS total_sales
+    FROM sales s
+    JOIN customers c ON s.Customer_Id = c.Customer_Id
+    WHERE State IN ('{state1}', '{state2}')
+    GROUP BY c.State
+""")
+state_comparison.show()
+
+# Query 10: Detailed Customer Purchase Report
+detailed_customer_report = spark.sql("""
+    SELECT customer_id, 
+           SUM(Price * Quantity) AS total_purchases, 
+           COUNT(*) AS total_transactions, 
+           AVG(Price * Quantity) AS avg_transaction_value
+    FROM sales
+    GROUP BY customer_id
+""")
+detailed_customer_report.show()
+
+# Stop Spark Session
+spark.stop()
